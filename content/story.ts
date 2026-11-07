@@ -162,8 +162,8 @@ export const RING_BEATS = [STYLES, STRUCTURE, FIT, SIGNAL, SECURITY, LASTS];
 
 export const BULLSEYE = {
   id: "bullseye" as const,
-  headline: "Dead center.",
-  body: "Not a claim — an average, measured one week after launch.",
+  headline: "Dead Center.",
+  body: "Not a claim - an average, measured one week after launch.",
   stats: [
     { value: "+18%", label: "Efficiency" },
     { value: "+26%", label: "Engagement" },
