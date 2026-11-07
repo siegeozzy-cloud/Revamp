@@ -1,0 +1,92 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------
+   CENTAIM palette
+   Cyan is energy and appears once per section. Gunmetal is every
+   structural surface. Void is a tint of gunmetal, not a new colour —
+   pure black kills the depth the 3D layer needs in Phase 4.
+   --------------------------------------------------------------- */
+@theme {
+  --color-void: #000000;
+  --color-void-lift: #0b0e10;
+
+  --color-gunmetal: #353e43;
+  --color-gunmetal-rim: #46525a;
+  --color-gunmetal-deep: #232b2f;
+
+  --color-aim: #0e8fa6;
+  --color-aim-mid: #17b4cf;
+  --color-aim-live: #3fd9f0;
+
+  --color-paper: #ffffff;
+  --color-muted: #9fb0b7;
+  --color-faint: #6d7f88;
+
+  --font-display: var(--font-inter-tight), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  --text-beat: clamp(2.75rem, 7vw, 5.75rem);
+  --text-hero: clamp(3rem, 9vw, 7.5rem);
+}
+
+@layer base {
+  :root {
+    /* Scroll length multiplier for the story stage. Portrait copy wraps
+       to more lines, so each beat needs longer to read. */
+    --story-scale: 1;
+  }
+
+  @media (max-width: 767px) {
+    :root {
+      --story-scale: 1.35;
+    }
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-paper);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: var(--color-aim);
+    color: #fff;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-aim-live);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+}
+
+@utility display-tight {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+  text-wrap: balance;
+}
+
+@utility rule-top {
+  border-top: 1px solid color-mix(in srgb, var(--color-gunmetal-rim) 55%, transparent);
+}
+
+/* The one glow in the system. Used only on the live ring and the dart tip. */
+@utility aim-glow {
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-aim-live) 55%, transparent))
+    drop-shadow(0 0 22px color-mix(in srgb, var(--color-aim) 35%, transparent));
+}
