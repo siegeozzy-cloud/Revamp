@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { HERO } from "@/content/story";
+import { ContactCta } from "@/components/ContactCta";
 import { RingDiagram } from "@/components/RingDiagram";
 
 export function Hero() {
@@ -26,12 +26,7 @@ export function Hero() {
         </p>
 
         <div className="mt-12 flex flex-wrap items-center gap-x-8 gap-y-5">
-          <Link
-            href={HERO.cta.href}
-            className="rounded-full bg-aim px-7 py-3.5 text-sm font-medium text-white transition-colors hover:bg-aim-mid"
-          >
-            {HERO.cta.label}
-          </Link>
+          <ContactCta />
           <span className="flex items-center gap-2.5 text-sm text-faint">
             {HERO.scrollCue}
             <span aria-hidden className="text-aim-live">

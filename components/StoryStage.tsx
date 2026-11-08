@@ -23,6 +23,7 @@ import {
 } from "@/content/story";
 import { strikeSide } from "@/storyboard/world";
 import { BeatNav } from "@/components/BeatNav";
+import { ContactCta } from "@/components/ContactCta";
 import { Mark } from "@/components/Mark";
 import { Scene } from "@/three/Scene";
 import { createStageState } from "@/three/state";
@@ -198,10 +199,15 @@ export function StoryStage({ fallback }: { fallback: ReactNode }) {
               {HERO.headline}
             </h1>
             <p className="mt-6 max-w-md text-lg text-muted">{HERO.body}</p>
-            <p className="mt-10 flex items-center gap-2.5 text-sm text-faint">
-              {HERO.scrollCue}
-              <span aria-hidden className="text-aim-live">↓</span>
-            </p>
+            <div className="mt-10 flex flex-wrap items-center gap-x-7 gap-y-4">
+              {/* The panel layer is pointer-events-none so the scroll story
+                  stays scrubbable; the one interactive element opts back in. */}
+              <ContactCta className="pointer-events-auto" />
+              <span className="flex items-center gap-2.5 text-sm text-faint">
+                {HERO.scrollCue}
+                <span aria-hidden className="text-aim-live">↓</span>
+              </span>
+            </div>
           </Panel>
 
           <Panel reg={reg} id="throw" side="right">
