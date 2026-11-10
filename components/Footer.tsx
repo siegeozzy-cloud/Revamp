@@ -2,6 +2,13 @@ import { CONTACT, RING_BEATS } from "@/content/story";
 import Link from "next/link";
 import { Mark } from "@/components/Mark";
 
+/**
+ * The beat headlines are written as sentences ("We aim for the styles."), so
+ * trimming them for the nav leaves a lower-case first word. Capitalise it here
+ * rather than in the copy — the copy is still read as prose on the page.
+ */
+const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 export function Footer() {
   return (
     <footer className="rule-top px-4 py-16 sm:px-8">
@@ -23,6 +30,11 @@ export function Footer() {
                 About
               </Link>
             </li>
+            <li>
+              <Link href="/demo" className="transition-colors hover:text-paper">
+                Demo
+              </Link>
+            </li>
             {RING_BEATS.map((beat) => (
               <li key={beat.id}>
                 {/* On the home page BeatNav turns this into a scroll to that
@@ -31,7 +43,7 @@ export function Footer() {
                   href={`/#${beat.id}`}
                   className="transition-colors hover:text-paper"
                 >
-                  {beat.headline.replace(/^We aim for /, "").replace(/\.$/, "")}
+                  {sentenceCase(beat.headline.replace(/^We aim for /, "").replace(/\.$/, ""))}
                 </Link>
               </li>
             ))}

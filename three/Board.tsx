@@ -12,17 +12,20 @@ import {
   RING_Z,
 } from "@/storyboard/world";
 import {
+  LAYER_COUNT,
   MAX_RING_THICKNESS,
   buildAnalytics,
-  buildLayeredRing,
   buildLogoMark,
   buildRing,
+  buildSlab,
   buildSpokes,
+  layerOffset,
   ringThickness,
 } from "./geometry";
 import {
+  LAYER_STOPS,
   PALETTE,
-  layerMaterials,
+  layerStackMaterial,
   ringMaterial,
   signalPointMaterial,
   wireMaterial,
@@ -49,6 +52,8 @@ const MARK_SCALE = 0.44;
  */
 export function Board({ state }: { state: StageState }) {
   const q = QUALITY[state.quality];
+  /** Drop MeshPhysicalMaterial's clearcoat lobe below the high tier. */
+  const cheap = !q.physical;
 
   // ---- geometry, built once per quality tier -------------------------------
   const rings = useMemo(
@@ -56,8 +61,9 @@ export function Board({ state }: { state: StageState }) {
     [q.ringSegments],
   );
 
-  const layered = useMemo(
-    () => buildLayeredRing(RING_RADIUS[1], q.ringSegments),
+  /** ONE slab, drawn four times. See buildSlab. */
+  const slabGeo = useMemo(
+    () => buildSlab(RING_RADIUS[1], q.ringSegments),
     [q.ringSegments],
   );
 
@@ -68,8 +74,8 @@ export function Board({ state }: { state: StageState }) {
 
   /** The bullseye is the Centaim mark itself, not a disc. */
   const bullGeo = useMemo(
-    () => buildLogoMark(BULLSEYE_RADIUS * MARK_SCALE, q.ringSegments),
-    [q.ringSegments],
+    () => buildLogoMark(BULLSEYE_RADIUS * MARK_SCALE, q.markCurve),
+    [q.markCurve],
   );
 
   const analytics = useMemo(() => buildAnalytics(RING_RADIUS[3]), []);
@@ -80,8 +86,15 @@ export function Board({ state }: { state: StageState }) {
     return g;
   }, []);
   const trendGeo = useMemo(
-    () => new THREE.TubeGeometry(analytics.trend, 120, RING_RADIUS[3] * 0.012, 6, false),
-    [analytics],
+    () =>
+      new THREE.TubeGeometry(
+        analytics.trend,
+        q.trendSegments,
+        RING_RADIUS[3] * 0.012,
+        6,
+        false,
+      ),
+    [analytics, q.trendSegments],
   );
   const axisGeo = useMemo(() => {
     const w = RING_RADIUS[3] * RING_RATIO * 1.5;
@@ -109,8 +122,12 @@ export function Board({ state }: { state: StageState }) {
 
   // ---- materials -----------------------------------------------------------
   /** One material per ring, so emissive can be driven individually. */
-  const matRings = useMemo(() => RING_RADIUS.map(() => ringMaterial()), []);
-  const matLayers = useMemo(() => layerMaterials(), []);
+  const matRings = useMemo(
+    () => RING_RADIUS.map(() => ringMaterial(cheap)),
+    [cheap],
+  );
+  /** Ring 2's whole stack: one material for four instances. */
+  const matStack = useMemo(() => layerStackMaterial(cheap), [cheap]);
   const matPoints = useMemo(() => signalPointMaterial(), []);
   const matTrend = useMemo(() => signalPointMaterial(), []);
   const matAxis = useMemo(() => {
@@ -157,7 +174,7 @@ export function Board({ state }: { state: StageState }) {
   useEffect(() => {
     const geos = [
       ...rings,
-      ...layered,
+      slabGeo,
       ...fitSegments,
       spokes,
       bullGeo,
@@ -167,7 +184,7 @@ export function Board({ state }: { state: StageState }) {
     ];
     const mats = [
       ...matRings,
-      ...matLayers,
+      matStack,
       ...matSegments,
       matPoints,
       matTrend,
@@ -181,7 +198,7 @@ export function Board({ state }: { state: StageState }) {
     };
   }, [
     rings,
-    layered,
+    slabGeo,
     fitSegments,
     spokes,
     bullGeo,
@@ -189,7 +206,7 @@ export function Board({ state }: { state: StageState }) {
     trendGeo,
     axisGeo,
     matRings,
-    matLayers,
+    matStack,
     matSegments,
     matPoints,
     matTrend,
@@ -200,7 +217,7 @@ export function Board({ state }: { state: StageState }) {
 
   // ---- refs ----------------------------------------------------------------
   const ringRefs = useRef<(THREE.Group | null)[]>([]);
-  const layerRefs = useRef<(THREE.Mesh | null)[]>([]);
+  const stackRef = useRef<THREE.InstancedMesh>(null);
   const apertureRef = useRef<THREE.Group>(null);
   const bullRef = useRef<THREE.Mesh>(null);
   const spokeRef = useRef<THREE.Mesh>(null);
@@ -210,6 +227,34 @@ export function Board({ state }: { state: StageState }) {
   const dummy = useMemo(() => new THREE.Object3D(), []);
   const bullGlow = useRef(0.15);
   const segHold = useRef(0);
+
+  /** Set while the stack is being animated, so a sealed stack costs nothing. */
+  const lastClip = useRef(0);
+
+  /*
+    Ring 2's four colours and its resting matrices, written ONCE on mount.
+
+    The colours are the only thing that distinguished the four old
+    materials and they never change, so they have no business touching a
+    frame. Seeding the matrices here is what lets useFrame skip the stack
+    entirely while it is sealed, and it is also what makes the stack
+    correct if the mesh ever remounts.
+  */
+  useEffect(() => {
+    const inst = stackRef.current;
+    if (!inst) return;
+    const c = new THREE.Color();
+    const o = new THREE.Object3D();
+    for (let i = 0; i < LAYER_COUNT; i++) {
+      inst.setColorAt(i, c.set(LAYER_STOPS[i]));
+      o.position.set(0, 0, layerOffset(RING_RADIUS[1], i));
+      o.updateMatrix();
+      inst.setMatrixAt(i, o.matrix);
+    }
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+    inst.instanceMatrix.needsUpdate = true;
+    lastClip.current = 0;
+  }, [matStack, slabGeo]);
 
   useFrame((_, dt) => {
     const { telescope, active, clip, segments, resolve, aperture, flash } = state;
@@ -223,7 +268,8 @@ export function Board({ state }: { state: StageState }) {
       // Live ring glows; everything else is structure.
       // A sheen, not a flood. The small inlays carry the actual glow.
       const target = active === i ? 0.3 : 0;
-      const mat = matRings[i];
+      // Ring 2 has no shell mesh — its glow rides the instanced stack.
+      const mat = i === 1 ? matStack : matRings[i];
       mat.emissiveIntensity += (target - mat.emissiveIntensity) * k;
     }
 
@@ -248,15 +294,30 @@ export function Board({ state }: { state: StageState }) {
       spokeRef.current.visible = matWire.opacity > 0.01;
     }
 
-    // Ring 2 opens as an exploded stack of four slabs.
-    const spread = ringThickness(RING_RADIUS[1]) * 1.7;
-    layerRefs.current.forEach((mesh, i) => {
-      if (!mesh) return;
-      const stagger = Math.min(1, Math.max(0, clip * 2.2 - i * 0.3));
-      const e = stagger * stagger * (3 - 2 * stagger);
-      mesh.position.z = (i - 1.5) * spread * e;
-      mesh.scale.setScalar(1 - (3 - i) * 0.012 * e);
-    });
+    /*
+      Ring 2 opens as an exploded stack of four slabs — now four instances
+      of one mesh rather than four meshes. The resting axial offset that
+      used to be baked into each geometry is folded into the matrix here.
+
+      Skipped entirely while the stack is sealed AND was already sealed
+      last frame: clip sits at exactly 0 for roughly two thirds of the
+      page, and rewriting four identical matrices plus re-uploading the
+      instance buffer for all of it is work with no visible result.
+    */
+    const stack = stackRef.current;
+    if (stack && (clip > 0.0001 || lastClip.current > 0.0001)) {
+      const spread = ringThickness(RING_RADIUS[1]) * 1.7;
+      for (let i = 0; i < LAYER_COUNT; i++) {
+        const stagger = Math.min(1, Math.max(0, clip * 2.2 - i * 0.3));
+        const e = stagger * stagger * (3 - 2 * stagger);
+        dummy.position.set(0, 0, layerOffset(RING_RADIUS[1], i) + (i - 1.5) * spread * e);
+        dummy.scale.setScalar(1 - (3 - i) * 0.012 * e);
+        dummy.updateMatrix();
+        stack.setMatrixAt(i, dummy.matrix);
+      }
+      stack.instanceMatrix.needsUpdate = true;
+      lastClip.current = clip;
+    }
 
     // Ring 3 segments light in sequence; DTR (index 4) lands last.
     // Lit in sequence during the fit beat, then released. Left on, ring 3
@@ -314,16 +375,17 @@ export function Board({ state }: { state: StageState }) {
       {RING_RADIUS.map((radius, i) => {
         if (i === 1) {
           // Ring 2 IS the four slabs — no solid shell, so it can open.
+          // One instanced draw, not four meshes: this is the ring the
+          // camera holds longest and closest, so it is where overdraw
+          // costs the most.
           return (
             <group key={i} ref={(el) => void (ringRefs.current[i] = el)}>
-              {layered.map((geo, li) => (
-                <mesh
-                  key={li}
-                  ref={(el) => void (layerRefs.current[li] = el)}
-                  geometry={geo}
-                  material={matLayers[li]}
-                />
-              ))}
+              <instancedMesh
+                ref={stackRef}
+                args={[slabGeo, matStack, LAYER_COUNT]}
+                frustumCulled={false}
+                raycast={() => null}
+              />
             </group>
           );
         }

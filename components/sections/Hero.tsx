@@ -1,5 +1,5 @@
 import { HERO } from "@/content/story";
-import { ContactCta } from "@/components/ContactCta";
+import { HeroCta } from "@/components/HeroCta";
 import { RingDiagram } from "@/components/RingDiagram";
 
 export function Hero() {
@@ -26,7 +26,7 @@ export function Hero() {
         </p>
 
         <div className="mt-12 flex flex-wrap items-center gap-x-8 gap-y-5">
-          <ContactCta />
+          <HeroCta />
           <span className="flex items-center gap-2.5 text-sm text-faint">
             {HERO.scrollCue}
             <span aria-hidden className="text-aim-live">

@@ -198,7 +198,19 @@ export const FX = {
   impactFringe: 0.0035,
 } as const;
 
-/** Mobile deltas. Applied over the desktop config, not a separate timeline. */
+/**
+ * Mobile deltas. Applied over the desktop config, not a separate timeline.
+ *
+ * NOT WIRED UP — nothing imports this. It was written as the mobile plan
+ * and never consumed, which is why phones were rendering at desktop
+ * settings. The render-cost half of it (dprCap, bloom, impactFringe) now
+ * lives in QUALITY at the bottom of this file and is applied per tier by
+ * three/device.ts; `beatVhScale` is done in CSS as --story-scale.
+ *
+ * What is still genuinely unshipped here is the camera framing: fov,
+ * holdFactor, leadFactor and gapScale. Those change the composition, not
+ * the frame rate, so they are left alone.
+ */
 export const MOBILE = {
   fov: 52,
   holdFactor: 1.45,
@@ -363,8 +375,87 @@ export function copyOpacityAt(p: number, beat: BeatId): number {
   return windowAt(p, inAt, inAt + fade);
 }
 
+/**
+ * QUALITY TIERS
+ *
+ * These are the only performance dial in the scene, so everything that
+ * costs a frame lives here rather than being hardcoded at a call site.
+ *
+ * The tier is chosen once per load by three/device.ts. Before that it was
+ * pinned to `high` in createStageState() and nothing ever moved it, so a
+ * phone ran the desktop-maximum settings — 256-segment rings, DPR 2, MSAA,
+ * clearcoat on every surface. That, not the geometry, is why mobile frames
+ * were slow.
+ *
+ * Fragment cost is what matters here, not triangles: the whole scene is
+ * ~45k tris, but the rings fill the viewport, so every extra shader
+ * feature is paid once per screen pixel per ring in front of the camera.
+ */
 export const QUALITY = {
-  high: { ringSegments: 256, tubeSegments: 128, bloom: true, fringe: true },
-  mid: { ringSegments: 160, tubeSegments: 72, bloom: true, fringe: false },
-  low: { ringSegments: 96, tubeSegments: 40, bloom: false, fringe: false },
+  high: {
+    /* Lathe segments per ring. 256 was 1.4° per segment on a shape that is
+       never more than ~1000px across — invisible, and 6x the vertex cost
+       of a tessellation nobody can see the edge of. */
+    ringSegments: 160,
+    tubeSegments: 128,
+    bloom: true,
+    fringe: true,
+    /** Renderer pixel-ratio cap. */
+    dpr: 2,
+    antialias: true,
+    /** MeshPhysicalMaterial (clearcoat + 2nd IBL lobe) vs MeshStandard. */
+    physical: true,
+    /** The second directional light, and the dart's travelling pointLight. */
+    fillLight: true,
+    dartLight: true,
+    /** Dot-field grid pitch in world units. Density is quadratic in this. */
+    field: true,
+    fieldSpacing: 3.9,
+    /** Beads in the dart trail. */
+    trailBeads: 160,
+    /** Cube-camera resolution for the baked environment. */
+    envRes: 256,
+    /** Tube segments along ring 4's trend line. */
+    trendSegments: 120,
+    /** Curve segments for the extruded logo mark. */
+    markCurve: 48,
+  },
+  mid: {
+    ringSegments: 112,
+    tubeSegments: 72,
+    bloom: true,
+    fringe: false,
+    dpr: 1.75,
+    antialias: true,
+    physical: false,
+    fillLight: true,
+    dartLight: true,
+    field: true,
+    fieldSpacing: 5.4,
+    trailBeads: 110,
+    envRes: 192,
+    trendSegments: 80,
+    markCurve: 32,
+  },
+  low: {
+    ringSegments: 72,
+    tubeSegments: 40,
+    bloom: false,
+    fringe: false,
+    dpr: 1.5,
+    antialias: false,
+    physical: false,
+    fillLight: false,
+    dartLight: false,
+    /* The field is the single largest fill-rate item on a phone — it draws
+       additively across the entire frame, behind everything. Set this to
+       `false` to drop the layer outright if the tier still misses 60fps;
+       the spacing below already cuts the point count ~3.8x. */
+    field: true,
+    fieldSpacing: 7.6,
+    trailBeads: 64,
+    envRes: 128,
+    trendSegments: 48,
+    markCurve: 24,
+  },
 } as const;

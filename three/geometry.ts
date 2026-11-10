@@ -69,32 +69,36 @@ export function buildRing(radius: number, segments: number): THREE.BufferGeometr
   return geo;
 }
 
-/**
- * Ring 2, built as a stack of slabs through its thickness so a clipping
- * plane exposes them at the cut: data / api / logic / interface, base to top.
- * Returns one geometry per layer, deepest first.
- */
-export function buildLayeredRing(
-  radius: number,
-  segments: number,
-  layers = 4,
-): THREE.BufferGeometry[] {
-  const innerR = radius * RING_RATIO;
-  const total = ringThickness(radius);
-  const slab = total / layers;
-  const bevel = radius * RING_BEVEL * 0.5;
+export const LAYER_COUNT = 4;
 
-  return Array.from({ length: layers }, (_, i) => {
-    const geo = new THREE.LatheGeometry(
-      ringProfile(innerR, radius, slab * 0.92, bevel),
-      segments,
-    );
-    geo.rotateX(Math.PI / 2);
-    // Stack along the axis, centered on the ring's own plane.
-    geo.translate(0, 0, -total / 2 + slab * (i + 0.5));
-    geo.computeVertexNormals();
-    return geo;
-  });
+/**
+ * ONE slab of ring 2's stack — data / api / logic / interface are the same
+ * shape, so this is built once and drawn four times as an InstancedMesh.
+ *
+ * Note what is NOT here: the axial offset. buildLayeredRing used to bake
+ * `-total/2 + slab*(i+0.5)` into each geometry with .translate(), which
+ * forced four distinct buffers (4x the vertex memory) and four draw calls
+ * for four identical shapes. The offset is per-instance data, so it now
+ * lives in the instance matrix alongside the fan-out animation that was
+ * already being written there. See layerOffset below.
+ */
+export function buildSlab(radius: number, segments: number): THREE.BufferGeometry {
+  const innerR = radius * RING_RATIO;
+  const slab = ringThickness(radius) / LAYER_COUNT;
+  const geo = new THREE.LatheGeometry(
+    ringProfile(innerR, radius, slab * 0.92, radius * RING_BEVEL * 0.5),
+    segments,
+  );
+  geo.rotateX(Math.PI / 2);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Resting Z of slab `i`, stacked along the axis and centred on the plane. */
+export function layerOffset(radius: number, i: number): number {
+  const total = ringThickness(radius);
+  const slab = total / LAYER_COUNT;
+  return -total / 2 + slab * (i + 0.5);
 }
 
 /**
@@ -237,11 +241,21 @@ export const MARK = {
   depth: 0.18,
 } as const;
 
-export function buildLogoMark(radius: number, segments = 96): THREE.BufferGeometry {
+/**
+ * @param curveSegments Segments per arc/bezier. This is now the real knob
+ * (QUALITY.markCurve), not ringSegments halved. The caller used to pass
+ * ringSegments, so the old high tier's 256 became 128 segments on each of
+ * six ExtrudeGeometries — two arcs, three circles and a bezier neck.
+ * Extrusion triangulates on the CPU through earcut, on the main thread, at
+ * mount: that was a visible stall before the first frame, spent on a mark
+ * that is a few hundred pixels across at its largest. 48 is already past
+ * the point where an arc edge is a straight line on screen.
+ */
+export function buildLogoMark(radius: number, curveSegments = 32): THREE.BufferGeometry {
   const deg = Math.PI / 180;
   const rOuter = radius;
   const rInner = radius * (1 - MARK.stroke);
-  const curve = Math.max(12, Math.round(segments / 2));
+  const curve = Math.max(8, Math.round(curveSegments));
   const extrude = { depth: radius * MARK.depth, bevelEnabled: false, curveSegments: curve };
 
   // The C.

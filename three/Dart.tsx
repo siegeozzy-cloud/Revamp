@@ -52,13 +52,22 @@ export function Dart({
       <mesh geometry={flightGeo} material={matFlight} />
       {/* Tip light — the only cyan on screen before the first impact. */}
       <mesh geometry={tipGeo} material={matTip} />
-      <pointLight
-        color="#3fd9f0"
-        intensity={18}
-        distance={DART.length * 2.5}
-        decay={2}
-        position={[0, 0, -0.4]}
-      />
+      {/*
+        A travelling light costs a per-fragment evaluation on every lit
+        material in the scene — including the rings that fill the frame —
+        to light a 17-unit dart against a black void. Dropped at the low
+        tier; the tip is emissive and unlit anyway, so the dart still
+        reads, it just stops casting onto the board it is flying at.
+      */}
+      {q.dartLight && (
+        <pointLight
+          color="#3fd9f0"
+          intensity={18}
+          distance={DART.length * 2.5}
+          decay={2}
+          position={[0, 0, -0.4]}
+        />
+      )}
     </group>
   );
 }

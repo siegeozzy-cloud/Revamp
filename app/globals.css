@@ -88,6 +88,29 @@
   border-top: 1px solid color-mix(in srgb, var(--color-gunmetal-rim) 55%, transparent);
 }
 
+/* The demo stage swaps its heading when the carousel lands on a new service.
+   A short rise is enough to read as "this changed" without delaying the word. */
+@keyframes demoTitle {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.demo-title {
+  animation: demoTitle 0.5s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-title {
+    animation: none;
+  }
+}
+
 /* The one glow in the system. Used only on the live ring and the dart tip. */
 @utility aim-glow {
   filter: drop-shadow(0 0 6px color-mix(in srgb, var(--color-aim-live) 55%, transparent))

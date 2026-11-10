@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame } from "@react-three/fiber";
 import { dartLaunch, dartPath } from "@/storyboard/world";
+import { QUALITY } from "@/storyboard/timeline";
 import { PALETTE } from "./materials";
 import type { StageState } from "./state";
 
@@ -17,16 +18,13 @@ import type { StageState } from "./state";
  * recorded positions, so it is exact at any scroll speed and correct when
  * the reader scrubs backwards.
  */
-const BEADS = 160;
 /** How far behind the tip the trail reaches, in flight-progress units. */
 const TAIL = 0.17;
 
 export function DartTrail({ state }: { state: StageState }) {
+  const beads = QUALITY[state.quality].trailBeads;
   const mesh = useRef<THREE.InstancedMesh>(null);
   const dummy = useMemo(() => new THREE.Object3D(), []);
-  const colour = useMemo(() => new THREE.Color(), []);
-  const live = useMemo(() => new THREE.Color(PALETTE.aimLive), []);
-  const dim = useMemo(() => new THREE.Color(PALETTE.aim), []);
 
   const geo = useMemo(() => new THREE.SphereGeometry(0.5, 6, 5), []);
   const mat = useMemo(
@@ -50,6 +48,30 @@ export function DartTrail({ state }: { state: StageState }) {
     };
   }, [geo, mat]);
 
+  /*
+    Bead colours, written ONCE.
+
+    They were being recomputed and re-uploaded on every frame, but every
+    term in them — `fade`, and so the lerp and the multiplier — depends
+    only on `i / (beads - 1)`. They are constants. So each frame paid a
+    full instanceColor buffer upload to the GPU plus `beads` Color
+    allocations-worth of maths to arrive at exactly the values already
+    sitting there.
+  */
+  useEffect(() => {
+    const inst = mesh.current;
+    if (!inst) return;
+    const colour = new THREE.Color();
+    const live = new THREE.Color(PALETTE.aimLive);
+    const dim = new THREE.Color(PALETTE.aim);
+    for (let i = 0; i < beads; i++) {
+      const fade = (1 - i / (beads - 1)) ** 1.6;
+      colour.copy(dim).lerp(live, fade).multiplyScalar(0.45 + fade * 1.5);
+      inst.setColorAt(i, colour);
+    }
+    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+  }, [beads, geo, mat]);
+
   useFrame(() => {
     const inst = mesh.current;
     if (!inst) return;
@@ -61,9 +83,9 @@ export function DartTrail({ state }: { state: StageState }) {
     if (!inst.visible) return;
     mat.opacity = 0.9 * (1 - state.dartFade);
 
-    for (let i = 0; i < BEADS; i++) {
+    for (let i = 0; i < beads; i++) {
       // 0 at the tip, 1 at the far end of the tail.
-      const back = i / (BEADS - 1);
+      const back = i / (beads - 1);
       let x: number, y: number, z: number;
 
       if (launch < 1) {
@@ -82,21 +104,22 @@ export function DartTrail({ state }: { state: StageState }) {
       }
 
       dummy.position.set(x, y, z);
-      // Taper and fade along the tail.
-      const fade = (1 - back) ** 1.6;
-      dummy.scale.setScalar(0.4 + fade * 3.2);
+      // Taper along the tail. Constant per bead, like the colour, but it
+      // rides the matrix that the position has to rewrite anyway.
+      dummy.scale.setScalar(0.4 + (1 - back) ** 1.6 * 3.2);
       dummy.updateMatrix();
       inst.setMatrixAt(i, dummy.matrix);
-
-      colour.copy(dim).lerp(live, fade).multiplyScalar(0.45 + fade * 1.5);
-      inst.setColorAt(i, colour);
     }
 
     inst.instanceMatrix.needsUpdate = true;
-    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
   });
 
   return (
-    <instancedMesh ref={mesh} args={[geo, mat, BEADS]} frustumCulled={false} />
+    <instancedMesh
+      ref={mesh}
+      args={[geo, mat, beads]}
+      frustumCulled={false}
+      raycast={() => null}
+    />
   );
 }

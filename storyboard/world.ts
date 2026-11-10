@@ -183,11 +183,23 @@ export function dartLaunch(u: number): [number, number, number] {
  * exactly on ring i's strike point. Catmull-Rom through the strike points
  * so the path curves instead of hinging at each ring.
  */
+/**
+ * Control points for the spiral. Hoisted to module scope because they are
+ * constants: they derive only from RING_RADIUS and the strike constants.
+ *
+ * Rebuilding them inside dartPath meant seven strikePoint() calls — each a
+ * sin and a cos — plus two array allocations on every call, and dartPath
+ * is called 160+ times per frame by DartTrail alone, plus three more by
+ * DartRig's finite-difference tangent. That was ~1,100 trig calls and
+ * ~320 allocations per frame to recompute the same seven points.
+ */
+const PATH_POINTS: [number, number, number][] = [
+  ...RING_RADIUS.map((_, i) => strikePoint(i)),
+  BULLSEYE_POINT,
+];
+
 export function dartPath(t: number): [number, number, number] {
-  const pts: [number, number, number][] = [
-    ...RING_RADIUS.map((_, i) => strikePoint(i)),
-    BULLSEYE_POINT,
-  ];
+  const pts = PATH_POINTS;
   const n = pts.length - 1;
   const scaled = Math.min(Math.max(t, 0), 1) * n;
   const i = Math.min(Math.floor(scaled), n - 1);

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { useFrame, useThree } from "@react-three/fiber";
 import { CAMERA } from "@/storyboard/world";
+import { QUALITY } from "@/storyboard/timeline";
+import type { QualityTier } from "./state";
 
 /**
  * Pointer-reactive dot field, sitting behind the board as the backdrop.
@@ -20,13 +22,6 @@ import { CAMERA } from "@/storyboard/world";
  */
 
 const DISTANCE = 190;
-/*
-  Density is the expensive dial here, not brightness: this field is
-  fill-rate bound, and every dot now draws at 50% alpha across the whole
-  frame. Tightening to 3.4 tripled the p95 frame time on a software
-  renderer, so it stays at 3.9.
-*/
-const SPACING = 3.9;
 /** Keep rippling for this long after the pointer stops, then settle. */
 const SETTLE_MS = 2600;
 
@@ -73,6 +68,18 @@ const VERT = /* glsl */ `
   }
 `;
 
+/*
+  No `discard` here any more.
+
+  It looked like an optimization and was the opposite. This draw is
+  additively blended with depthWrite off, so a fragment with alpha 0
+  already contributes nothing — discard saved no work. What it DID do is
+  mark the shader as having side effects, which disables early-Z and
+  hidden-surface removal for the draw on exactly the tile-based GPUs every
+  phone uses (Apple, Adreno, Mali). The field covers the entire frame and
+  sits behind the board, so losing early rejection there also costs the
+  expensive ring shaders drawn over it.
+*/
 const FRAG = /* glsl */ `
   uniform vec3 uColor;
   uniform float uOpacity;
@@ -81,19 +88,29 @@ const FRAG = /* glsl */ `
   void main() {
     vec2 c = gl_PointCoord - 0.5;
     float a = smoothstep(0.5, 0.18, length(c));
-    if (a < 0.01) discard;
     // Every dot sits at half opacity; the wave lifts it to full.
     gl_FragColor = vec4(uColor * (1.3 + vLift * 1.7), a * uOpacity * (0.5 + vLift * 0.5));
   }
 `;
 
-export function DotField() {
+export function DotField({ tier = "high" }: { tier?: QualityTier }) {
   const { camera, invalidate, size } = useThree();
+  const q = QUALITY[tier];
+  /*
+    Grid pitch is the expensive dial here, not brightness: the field is
+    fill-rate bound and draws additively across the whole frame. Point
+    count goes as the SQUARE of this, so the low tier's 7.6 against the
+    desktop 3.9 is ~3.8x fewer points — on a 390pt portrait phone that is
+    ~640 points instead of ~2,430, each one covering 8-24 device pixels of
+    blended fragment.
+  */
+  const spacing = q.fieldSpacing;
   // Bisect handle: load the page with ?nofield to drop this layer and see
   // whether a performance problem is coming from here or from the board.
   const off =
-    typeof window !== "undefined" &&
-    new URLSearchParams(window.location.search).has("nofield");
+    !q.field ||
+    (typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).has("nofield"));
   const points = useRef<THREE.Points>(null);
   const lastMove = useRef(-Infinity);
   const ndc = useRef(new THREE.Vector2(0, 0));
@@ -102,21 +119,21 @@ export function DotField() {
   const halfW = halfH * Math.max(1.2, size.width / Math.max(size.height, 1));
 
   const geometry = useMemo(() => {
-    const cols = Math.ceil((halfW * 2.4) / SPACING);
-    const rows = Math.ceil((halfH * 2.4) / SPACING);
+    const cols = Math.ceil((halfW * 2.4) / spacing);
+    const rows = Math.ceil((halfH * 2.4) / spacing);
     const pos = new Float32Array(cols * rows * 3);
     let i = 0;
     for (let y = 0; y < rows; y++) {
       for (let x = 0; x < cols; x++) {
-        pos[i++] = (x - (cols - 1) / 2) * SPACING;
-        pos[i++] = (y - (rows - 1) / 2) * SPACING;
+        pos[i++] = (x - (cols - 1) / 2) * spacing;
+        pos[i++] = (y - (rows - 1) / 2) * spacing;
         pos[i++] = 0;
       }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
     return g;
-  }, [halfW, halfH]);
+  }, [halfW, halfH, spacing]);
 
   const material = useMemo(
     () =>
@@ -127,7 +144,14 @@ export function DotField() {
           uTime: { value: 0 },
           uPointer: { value: new THREE.Vector2(0, 0) },
           uAmp: { value: 9.0 },
-          uSize: { value: 2.9 },
+          /*
+            Grown with the square root of the pitch, not with the pitch.
+            A sparser grid at the same dot size reads as a thinner, dimmer
+            field rather than a lighter one, so each dot takes back some of
+            the gap — but only half of it, so total coverage still falls
+            (low tier: ~3.8x fewer dots, ~2x the area each, ~2x less fill).
+          */
+          uSize: { value: 2.9 * Math.sqrt(spacing / 3.9) },
           uColor: { value: new THREE.Color("#ffffff") },
           uOpacity: { value: 0 },
         },
@@ -135,7 +159,7 @@ export function DotField() {
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
-    [],
+    [spacing],
   );
 
   useEffect(() => {

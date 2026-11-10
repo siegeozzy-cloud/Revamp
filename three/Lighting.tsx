@@ -1,7 +1,9 @@
 "use client";
 
 import { Environment, Lightformer } from "@react-three/drei";
+import { QUALITY } from "@/storyboard/timeline";
 import { PALETTE } from "./materials";
+import type { QualityTier } from "./state";
 
 /**
  * Baked-feel lighting with no network request.
@@ -14,7 +16,8 @@ import { PALETTE } from "./materials";
  * No realtime shadows anywhere. A contact-shadow plane does the job the
  * eye actually checks for, at a fraction of the frame budget.
  */
-export function Lighting() {
+export function Lighting({ tier = "high" }: { tier?: QualityTier }) {
+  const q = QUALITY[tier];
   return (
     <>
       <color attach="background" args={[PALETTE.void]} />
@@ -26,17 +29,30 @@ export function Lighting() {
       */}
       <fog attach="fog" args={[PALETTE.void, 430, 1150]} />
 
-      <ambientLight intensity={0.45} />
+      <ambientLight intensity={q.fillLight ? 0.45 : 0.56} />
 
+      {/*
+        Every light is paid per fragment on every lit material, and the
+        rings fill the frame — so a light here is close to a full-screen
+        cost. The low tier drops the fill and raises ambient slightly to
+        compensate, which keeps the gunmetal off black for one lookup
+        instead of a whole extra lambert+GGX evaluation per pixel.
+      */}
       {/* Key: rakes across the ring bevels from upper left. */}
-      <directionalLight position={[-60, 70, 90]} intensity={2.6} color="#dbe7ec" />
+      <directionalLight
+        position={[-60, 70, 90]}
+        intensity={q.fillLight ? 2.6 : 2.9}
+        color="#dbe7ec"
+      />
       {/* Fill: keeps gunmetal from going black in the tunnel. */}
-      <directionalLight position={[40, -30, -40]} intensity={0.7} color="#4d6672" />
+      {q.fillLight && (
+        <directionalLight position={[40, -30, -40]} intensity={0.7} color="#4d6672" />
+      )}
       {/* Axial light travelling with the camera, so ring faces stay readable
           as we fly past them. Phase 4b parents this to the camera. */}
       <pointLight position={[0, 0, 40]} intensity={900} decay={2} color="#9fc3d2" />
 
-      <Environment resolution={256} frames={1}>
+      <Environment resolution={q.envRes} frames={1}>
         {/* Broad soft source — gives the metal its gradient. */}
         <Lightformer
           form="rect"

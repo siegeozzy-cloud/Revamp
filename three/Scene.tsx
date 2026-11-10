@@ -4,7 +4,8 @@ import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { CAMERA, zOfDepth } from "@/storyboard/world";
-import { poseAt } from "@/storyboard/timeline";
+import { QUALITY, poseAt } from "@/storyboard/timeline";
+import { dprRange } from "./device";
 import { Board } from "./Board";
 import { DartRig } from "./DartRig";
 import { DartTrail } from "./DartTrail";
@@ -80,14 +81,34 @@ export function Scene({
   state: StageState;
   progress: { current: number };
 }) {
+  const q = QUALITY[state.quality];
+
   return (
     <Canvas
       frameloop="demand"
       // No object in this scene is clickable; skip hit-testing entirely.
       events={undefined}
       style={{ pointerEvents: "none" }}
-      dpr={[1, 2]}
-      gl={{ antialias: true, alpha: false, powerPreference: "high-performance" }}
+      /*
+        Capped per tier, and never above the screen's real ratio.
+        [1, 2] for everyone meant a phone reporting devicePixelRatio 3
+        rendered 1.3M pixels of clearcoated, double-sided, additively
+        overdrawn scene — before any shader change, this is the single
+        largest lever on a handset, because every other cost on the frame
+        is paid per pixel.
+      */
+      dpr={dprRange(q.dpr)}
+      gl={{
+        // MSAA is bandwidth, and bandwidth is what a mobile tiler runs out
+        // of first. Off at the low tier, where DPR is already doing the
+        // edge smoothing that matters.
+        antialias: q.antialias,
+        alpha: false,
+        // Nothing here uses the stencil buffer; allocating one costs
+        // bandwidth per tile on mobile for nothing.
+        stencil: false,
+        powerPreference: "high-performance",
+      }}
       camera={{
         fov: CAMERA.fov,
         near: CAMERA.near,
@@ -99,8 +120,8 @@ export function Scene({
         gl.toneMappingExposure = 1.05;
       }}
     >
-      <Lighting />
-      <DotField />
+      <Lighting tier={state.quality} />
+      <DotField tier={state.quality} />
       <Board state={state} />
       <DartRig state={state} />
       <DartTrail state={state} />

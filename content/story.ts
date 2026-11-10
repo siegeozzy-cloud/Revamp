@@ -35,7 +35,7 @@ export const HERO = {
   headline: "Every build needs a target.",
   body: "Most systems get built by guessing and corrected later. We start by naming exactly what has to be hit, then build until it's hit. Nothing shipped on hope.",
   scrollCue: "Follow the throw",
-  cta: { label: "Contact Us", href: "#contact" },
+  cta: { label: "Try Our Demo", href: "/demo" },
 };
 
 export const THROW = {
